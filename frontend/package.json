@@ -1,0 +1,35 @@
+{
+  "name": "analitica-datos-epi",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.0",
+    "@fontsource-variable/public-sans": "5.2.5",
+    "@fontsource-variable/archivo": "5.2.5",
+    "@mui/icons-material": "7.1.0",
+    "@mui/material": "7.1.0",
+    "@tanstack/react-query": "5.80.7",
+    "leaflet": "1.9.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-leaflet": "5.0.0",
+    "react-router-dom": "7.6.2",
+    "recharts": "2.15.3",
+    "zustand": "5.0.5"
+  },
+  "devDependencies": {
+    "@types/leaflet": "1.9.18",
+    "@types/react": "19.1.6",
+    "@types/react-dom": "19.1.6",
+    "@vitejs/plugin-react": "4.5.2",
+    "typescript": "5.8.3",
+    "vite": "6.3.5"
+  }
+}
