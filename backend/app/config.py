@@ -11,7 +11,7 @@ import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent          # backend/
-RAIZ = BASE_DIR.parent                                       # ANALITICA DATOS EPI/
+RAIZ = BASE_DIR.parent                                       # ANALITICA DISCAPACIDAD/
 
 
 def _cargar_env() -> None:

@@ -32,7 +32,7 @@ Requisitos: Python 3.11 o superior. Node.js 20 o superior solo si vas a modifica
 ## Estructura
 
 ```
-ANALITICA DATOS EPI/
+ANALITICA DISCAPACIDAD/
 ├── backend/
 │   ├── app/
 │   │   ├── ingesta/lector.py   lectura del libro, columnas, calidad, privacidad

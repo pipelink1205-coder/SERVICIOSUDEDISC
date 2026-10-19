@@ -30,7 +30,7 @@ export function BarraFiltros() {
   const chips = Object.entries(filtros).flatMap(([d, vs]) => vs.map((v) => ({ d, v })))
 
   return (
-    <Box sx={{ position: 'sticky', top: 0, zIndex: 20, bgcolor: t.bg, borderBottom: `1px solid ${t.line}`, px: { xs: 2, md: 3.5 }, py: 1.25 }}>
+    <Box sx={{ position: 'sticky', top: 0, zIndex: 1100, bgcolor: t.bg, borderBottom: `1px solid ${t.line}`, px: { xs: 2, md: 3.5 }, py: 1.25 }}>
       <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
         <Button size="small" variant="outlined" startIcon={<FilterListRounded />} onClick={(e) => setAncla(e.currentTarget)}
           sx={{ borderColor: t.line, color: t.text, bgcolor: t.paper, '&:hover': { borderColor: t.unidad, bgcolor: t.paper } }}>

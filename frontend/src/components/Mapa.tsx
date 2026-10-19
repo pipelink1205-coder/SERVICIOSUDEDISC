@@ -108,7 +108,7 @@ export function MapaTerritorio({ territorios, medida = 'atenciones', alto = 460,
     n: f.properties!.numero as number, lat: f.properties!.clat as number, lon: f.properties!.clon as number })) ?? [], [geo])
 
   return (
-    <Box sx={{ position: 'relative', height: alto, borderRadius: '10px', overflow: 'hidden', bgcolor: oscuro ? '#0B1120' : t.bg,
+    <Box sx={{ position: 'relative', isolation: 'isolate', zIndex: 0, height: alto, borderRadius: '10px', overflow: 'hidden', bgcolor: oscuro ? '#0B1120' : t.bg,
       '& .leaflet-container': { background: 'transparent', fontFamily: 'inherit' },
       '& .tt-mapa-cont': { bgcolor: '#172033', color: '#fff', border: 0, borderRadius: '8px', boxShadow: 'none', p: '8px 10px' },
       '& .tt-mapa-cont::before': { display: 'none' },
