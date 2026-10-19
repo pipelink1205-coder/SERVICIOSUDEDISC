@@ -1,9 +1,9 @@
 import 'leaflet/dist/leaflet.css'
 import { Box, Stack, Typography, useTheme } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
-import type { Feature, FeatureCollection } from 'geojson'
+import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import L from 'leaflet'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { GeoJSON, MapContainer, useMap } from 'react-leaflet'
 import { num } from '../lib/formato'
 import type { Territorio } from '../lib/datos'
@@ -104,9 +104,6 @@ export function MapaTerritorio({ territorios, medida = 'atenciones', alto = 460,
     })
   }
 
-  const centroides = useMemo(() => geo?.features.map((f) => ({
-    n: f.properties!.numero as number, lat: f.properties!.clat as number, lon: f.properties!.clon as number })) ?? [], [geo])
-
   return (
     <Box sx={{ position: 'relative', isolation: 'isolate', zIndex: 0, height: alto, borderRadius: '10px', overflow: 'hidden', bgcolor: oscuro ? '#0B1120' : t.bg,
       '& .leaflet-container': { background: 'transparent', fontFamily: 'inherit' },
@@ -114,16 +111,18 @@ export function MapaTerritorio({ territorios, medida = 'atenciones', alto = 460,
       '& .tt-mapa-cont::before': { display: 'none' },
       '& .tt-mapa': { display: 'flex', flexDirection: 'column', gap: '1px', fontSize: 12 },
       '& .tt-mapa em': { opacity: 0.65, fontStyle: 'normal', fontSize: 11, mt: '3px' },
-      '& .etq-mapa': { bgcolor: 'transparent', border: 0, boxShadow: 'none', p: 0, fontWeight: 700, fontSize: 11,
-        color: oscuro || modo === 'dark' ? '#fff' : '#172033', textShadow: oscuro || modo === 'dark'
-          ? '0 0 3px #0B1120, 0 0 3px #0B1120' : '0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff', pointerEvents: 'none' },
-      '& .etq-mapa::before': { display: 'none' },
+      '& .etq-num': { pointerEvents: 'none', bgcolor: 'transparent', border: 0, width: 0, height: 0 },
+      '& .etq-num span': { position: 'absolute', left: 0, top: 0, transform: 'translate(-50%, -50%)', whiteSpace: 'nowrap',
+        lineHeight: 1, fontFamily: FUENTE_DISPLAY, fontStretch: '108%', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',
+        userSelect: 'none', transition: 'font-size .25s ease, opacity .25s ease, color .25s ease',
+        '@media (prefers-reduced-motion: reduce)': { transition: 'none' } },
     }}>
       {geo && (
         <MapContainer center={[6.25, -75.6]} zoom={11} scrollWheelZoom={false} zoomControl={!oscuro}
           attributionControl={false} zoomSnap={0.25} style={{ height: '100%', width: '100%' }}>
           <GeoJSON key={firma} data={geo} style={estilo as any} onEachFeature={alCrear} />
-          {etiquetas && <Etiquetas centroides={centroides} valores={valores} medida={medida} />}
+          {etiquetas && <Etiquetas geo={geo} firma={firma} seleccion={seleccion} fondo={oscuro ? '#0B1120' : t.bg}
+            relleno={(n) => color(valores.get(n)?.[medida] ?? 0)} />}
           <Encuadre datos={geo} reservar={tarjeta} />
         </MapContainer>
       )}
@@ -149,20 +148,140 @@ export function MapaTerritorio({ territorios, medida = 'atenciones', alto = 460,
   )
 }
 
-function Etiquetas({ centroides, valores, medida }: {
-  centroides: { n: number; lat: number; lon: number }[]; valores: Map<number, Territorio>; medida: 'atenciones' | 'personas'
+/** `lat` y `lon` son el punto más interior de la zona; `radio` es el círculo más grande que cabe ahí (en grados). */
+type Zona = { n: number; lat: number; lon: number; radio: number; anillos: number[][][] }
+
+/** Contornos exteriores de un polígono o multipolígono, como listas de [lon, lat]. */
+function anillosDe(g: Geometry | undefined): number[][][] {
+  if (!g) return []
+  if (g.type === 'Polygon') return [g.coordinates[0]]
+  if (g.type === 'MultiPolygon') return g.coordinates.map((p) => p[0])
+  return []
+}
+
+function enAnillo(x: number, y: number, anillo: number[][]): boolean {
+  let dentro = false
+  for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    const [xi, yi] = anillo[i], [xj, yj] = anillo[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) dentro = !dentro
+  }
+  return dentro
+}
+
+function distanciaAlBorde(x: number, y: number, anillo: number[][]): number {
+  let min = Infinity
+  for (let i = 0, j = anillo.length - 1; i < anillo.length; j = i++) {
+    const [ax, ay] = anillo[j], [bx, by] = anillo[i]
+    const dx = bx - ax, dy = by - ay
+    const t = dx || dy ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy))) : 0
+    const ex = x - (ax + t * dx), ey = y - (ay + t * dy)
+    min = Math.min(min, ex * ex + ey * ey)
+  }
+  return Math.sqrt(min)
+}
+
+/**
+ * Punto más alejado de todos los bordes (polo de inaccesibilidad) del contorno mayor.
+ * Es donde mejor cabe un número, incluso en zonas alargadas o con forma de «C».
+ */
+function puntoInterior(anillos: number[][][]): { x: number; y: number; r: number } | null {
+  if (!anillos.length) return null
+  const area = (a: number[][]) => Math.abs(a.reduce((s, p, i) => { const q = a[(i + 1) % a.length]; return s + p[0] * q[1] - q[0] * p[1] }, 0)) / 2
+  const anillo = anillos.reduce((m, a) => (area(a) > area(m) ? a : m))
+  const xs = anillo.map((p) => p[0]), ys = anillo.map((p) => p[1])
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
+  let mejor = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, r: -Infinity }
+  const probar = (x: number, y: number) => {
+    const d = distanciaAlBorde(x, y, anillo) * (enAnillo(x, y, anillo) ? 1 : -1)
+    if (d > mejor.r) mejor = { x, y, r: d }
+  }
+  const paso = Math.max(x1 - x0, y1 - y0) / 20
+  for (let x = x0; x <= x1; x += paso) for (let y = y0; y <= y1; y += paso) probar(x, y)
+  let ventana = paso
+  for (let k = 0; k < 7; k++) {
+    ventana /= 2
+    const { x, y } = mejor
+    for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) probar(x + i * ventana, y + j * ventana)
+  }
+  return mejor
+}
+
+/** Área aproximada de la zona en píxeles cuadrados al zoom actual (fórmula del cordón). */
+function areaPx(map: L.Map, anillos: number[][][]): number {
+  let total = 0
+  for (const anillo of anillos) {
+    const pts = anillo.map(([lon, lat]) => map.latLngToLayerPoint([lat, lon]))
+    let a = 0
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length]
+      a += p.x * q.y - q.x * p.y
+    }
+    total += Math.abs(a) / 2
+  }
+  return total
+}
+
+/** Luminosidad relativa (0 a 1) de un color #rrggbb mezclado con el fondo según la opacidad del relleno. */
+function luminosidad(hex: string, fondo: string, opacidad: number): number {
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+  if (!/^#[0-9a-f]{6}$/i.test(hex) || !/^#[0-9a-f]{6}$/i.test(fondo)) return 0
+  const c = rgb(hex), f = rgb(fondo)
+  const lin = c.map((v, i) => {
+    const s = (v * opacidad + f[i] * (1 - opacidad)) / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+}
+
+/**
+ * Número de cada comuna o corregimiento, muy tenue. El tamaño de la letra sigue el tamaño
+ * de la zona en pantalla (raíz del área), y el color se adapta al relleno para mantener contraste.
+ */
+function Etiquetas({ geo, relleno, fondo, seleccion, firma }: {
+  geo: FeatureCollection; relleno: (n: number) => string; fondo: string; seleccion: string[]; firma: string
 }) {
   const map = useMap()
+  const zonas = useMemo<Zona[]>(() => geo.features.map((f) => {
+    const anillos = anillosDe(f.geometry)
+    const p = puntoInterior(anillos)
+    return { n: f.properties!.numero as number, anillos,
+      lat: p?.y ?? (f.properties!.clat as number), lon: p?.x ?? (f.properties!.clon as number), radio: Math.max(p?.r ?? 0, 0) }
+  }), [geo])
+  // la función de color cambia en cada render; se lee desde una referencia para no recrear las marcas
+  const vivo = useRef({ relleno, fondo, seleccion })
+  vivo.current = { relleno, fondo, seleccion }
+
   useEffect(() => {
-    const grupo = L.layerGroup(
-      centroides.map((c) => {
-        const v = valores.get(c.n)?.[medida] ?? 0
-        return L.tooltip({ permanent: true, direction: 'center', className: 'etq-mapa', interactive: false })
-          .setLatLng([c.lat, c.lon]).setContent(v ? String(c.n) : '')
-      }),
-    ).addTo(map)
-    return () => { grupo.remove() }
-  }, [centroides, valores, medida, map])
+    const marcas = zonas.map((z) => L.marker([z.lat, z.lon], {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({ className: 'etq-num', html: `<span>${z.n}</span>`, iconSize: [0, 0] }),
+    }).addTo(map))
+
+    const ajustar = () => {
+      const { relleno: rel, fondo: bg, seleccion: sel } = vivo.current
+      marcas.forEach((m, i) => {
+        const z = zonas[i]
+        const el = m.getElement()?.firstElementChild as HTMLElement | null
+        if (!el) return
+        // tamaño: sigue la escala de la zona (raíz del área) pero nunca más grande de lo que cabe en su punto interior
+        const lado = Math.sqrt(areaPx(map, z.anillos))
+        const radioPx = map.latLngToLayerPoint([z.lat, z.lon + z.radio]).x - map.latLngToLayerPoint([z.lat, z.lon]).x
+        const px = Math.min(26, Math.max(0, Math.min(lado * 0.27, radioPx * 1.35)))
+        const elegida = sel.includes(String(z.n))
+        const apagada = sel.length > 0 && !elegida
+        // texto oscuro o blanco según cuál contraste más con el relleno (cruce en luminosidad ≈ 0,18)
+        const claro = luminosidad(rel(z.n), bg, apagada ? 0.35 : 0.88) > 0.18
+        el.style.fontSize = `${px.toFixed(1)}px`
+        el.style.display = px < 8.5 ? 'none' : 'block'   // zonas demasiado pequeñas: sin número
+        el.style.color = claro ? '#0F1A33' : '#FFFFFF'
+        el.style.opacity = String(elegida ? 0.9 : apagada ? 0.28 : 0.55)
+        el.style.fontWeight = elegida ? '700' : '600'
+      })
+    }
+    ajustar()
+    map.on('zoomend resize', ajustar)
+    return () => { map.off('zoomend resize', ajustar); marcas.forEach((m) => m.remove()) }
+  }, [zonas, firma, map])
   return null
 }
 

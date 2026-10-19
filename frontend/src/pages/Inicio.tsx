@@ -57,7 +57,7 @@ export default function Inicio() {
             <Typography component={Link} to="/territorio" sx={{ fontSize: 12.5, color: '#9ec5f4', textDecoration: 'none',
               '&:hover': { textDecoration: 'underline' } }}>Ver territorio</Typography>
           </Stack>
-          <MapaTerritorio territorios={data.territorio.territorios} alto={560} oscuro etiquetas={false} tarjeta={false}
+          <MapaTerritorio territorios={data.territorio.territorios} alto={560} oscuro tarjeta={false}
             totales={k} alSenalar={setEncima} />
           {data.territorio.sin_mapa.length > 0 && (
             <Typography sx={{ fontSize: 11.5, color: '#8C97AB', mt: 1 }}>

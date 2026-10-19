@@ -131,44 +131,73 @@ export function MapaCalor({ filas, columnas, valores, etiquetaFila, etiquetaColu
 }) {
   const t = useT()
   const alternar = useFiltros((s) => s.alternar)
+  const filtros = useFiltros((s) => s.filtros)
   const escala = rampa ?? t.seq
-  const tope = Math.max(...valores.flat(), 1)
-  const color = (v: number) => {
-    if (!v) return 'transparent'
-    const i = Math.min(escala.length - 1, Math.floor(Math.sqrt(v / tope) * (escala.length - 0.01)))
-    return escala[i]
-  }
-  const indice = (v: number) => Math.min(escala.length - 1, Math.floor(Math.sqrt(v / tope) * (escala.length - 0.01)))
+  // filas y columnas seleccionadas en el filtro global: se resaltan y el resto se apaga
+  const selCol = dimColumna ? filtros[dimColumna] ?? [] : []
+  const selFila = dimFila ? filtros[dimFila] ?? [] : []
+  const colOn = (c: any) => !selCol.length || selCol.includes(String(c))
+  const clave = (f: any) => String(claveFila ? claveFila(f) : f)
+  const filaOn = (f: any) => !selFila.length || selFila.includes(clave(f))
+  // la escala de color se calcula solo con lo seleccionado, para que el contraste sea útil
+  const tope = Math.max(...valores.flatMap((fila, i) => (filaOn(filas[i]) ? fila.filter((_, j) => colOn(columnas[j])) : [])), 1)
+  const indice = (v: number) => Math.min(escala.length - 1, Math.floor(Math.sqrt(Math.min(v / tope, 1)) * (escala.length - 0.01)))
+  const totalFila = (i: number) => valores[i].reduce((a, v, j) => a + (colOn(columnas[j]) ? v : 0), 0)
+  const hayFiltro = selCol.length > 0 || selFila.length > 0
   return (
     <Box sx={{ overflowX: 'auto' }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: `${anchoEtiqueta}px repeat(${columnas.length}, minmax(44px, 1fr))`,
-        gap: '2px', minWidth: anchoEtiqueta + columnas.length * 46 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: `${anchoEtiqueta}px repeat(${columnas.length}, minmax(44px, 1fr)) 70px`,
+        gap: '2px', minWidth: anchoEtiqueta + columnas.length * 46 + 72 }}>
         <Box />
-        {columnas.map((c) => (
-          <ButtonBase key={String(c)} disabled={!dimColumna} onClick={() => dimColumna && alternar(dimColumna, c)}
-            sx={{ fontSize: 11, color: t.text2, fontWeight: 600, py: 0.5, borderRadius: '4px' }}>
-            {etiquetaColumna(c)}
-          </ButtonBase>
-        ))}
-        {filas.map((f, i) => (
-          <Box key={String(f)} sx={{ display: 'contents' }}>
-            <ButtonBase disabled={!dimFila} onClick={() => dimFila && alternar(dimFila, claveFila ? claveFila(f) : f)}
-              sx={{ justifyContent: 'flex-start', fontSize: 12, color: t.text, pr: 1, textAlign: 'left', borderRadius: '4px',
-                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block', lineHeight: '28px' }}
-              title={etiquetaFila(f)}>
-              {etiquetaFila(f)}
+        {columnas.map((c) => {
+          const on = selCol.includes(String(c))
+          return (
+            <ButtonBase key={String(c)} disabled={!dimColumna} onClick={() => dimColumna && alternar(dimColumna, c)} aria-pressed={on}
+              sx={{ fontSize: 11, color: on ? t.unidad : t.text2, fontWeight: on ? 800 : 600, py: 0.5, borderRadius: '4px',
+                borderBottom: on ? `2px solid ${t.unidad}` : '2px solid transparent', opacity: colOn(c) ? 1 : 0.5 }}>
+              {etiquetaColumna(c)}
             </ButtonBase>
-            {valores[i].map((v, j) => (
-              <Tooltip key={j} arrow title={`${etiquetaFila(f)}, ${etiquetaColumna(columnas[j])}: ${num(v)} atenciones`}>
-                <Box sx={{ height: 28, borderRadius: '4px', bgcolor: v ? color(v) : t.bg, display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 10.5, fontWeight: 600,
-                  color: v ? (luz(escala[indice(v)]) < 0.45 ? '#fff' : '#172033') : t.text2 }}>
-                  {v ? num(v) : ''}
-                </Box>
-              </Tooltip>
-            ))}
-          </Box>
-        ))}
+          )
+        })}
+        <Box sx={{ fontSize: 11, color: t.text, fontWeight: 700, py: 0.5, textAlign: 'right', pr: 0.75 }}>
+          {selCol.length ? 'Total sel.' : 'Total'}
+        </Box>
+        {filas.map((f, i) => i)
+          .sort((x, y) => (selCol.length ? totalFila(y) - totalFila(x) : 0) || x - y)
+          .map((i) => {
+          const f = filas[i]
+          const fOn = filaOn(f)
+          const tot = totalFila(i)
+          return (
+            <Box key={String(f)} sx={{ display: 'contents' }}>
+              <ButtonBase disabled={!dimFila} onClick={() => dimFila && alternar(dimFila, claveFila ? claveFila(f) : f)}
+                sx={{ justifyContent: 'flex-start', fontSize: 12, color: t.text, pr: 1, textAlign: 'left', borderRadius: '4px',
+                  overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block', lineHeight: '28px',
+                  fontWeight: selFila.includes(clave(f)) ? 700 : 400, opacity: fOn ? 1 : 0.45 }}
+                title={etiquetaFila(f)}>
+                {etiquetaFila(f)}
+              </ButtonBase>
+              {valores[i].map((v, j) => {
+                const on = fOn && colOn(columnas[j])
+                return (
+                  <Tooltip key={j} arrow title={`${etiquetaFila(f)}, ${etiquetaColumna(columnas[j])}: ${num(v)} atenciones`}>
+                    <Box sx={{ height: 28, borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10.5, fontWeight: 600, transition: 'opacity .2s',
+                      bgcolor: v ? (on ? escala[indice(v)] : t.line) : t.bg,
+                      opacity: on || !hayFiltro ? 1 : 0.55,
+                      color: !v ? t.text2 : on ? (luz(escala[indice(v)]) < 0.45 ? '#fff' : '#172033') : t.muted }}>
+                      {v ? num(v) : ''}
+                    </Box>
+                  </Tooltip>
+                )
+              })}
+              <Box sx={{ height: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pr: 0.75, fontSize: 11.5,
+                fontWeight: 700, color: fOn && tot ? t.text : t.muted }}>
+                {tot ? num(tot) : '—'}
+              </Box>
+            </Box>
+          )
+        })}
       </Box>
     </Box>
   )
