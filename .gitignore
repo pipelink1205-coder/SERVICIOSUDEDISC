@@ -10,3 +10,6 @@ _to_delete/
 *.db
 __pycache__/
 .pytest_cache/
+
+# Archivos temporales de Word
+~$*
